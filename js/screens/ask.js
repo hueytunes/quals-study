@@ -135,13 +135,10 @@ function render(host) {
   }
 
   if (_state.answer) {
-    const answerCard = createEl('div', { class: 'sub-card ask-answer' });
-    answerCard.appendChild(createEl('h4', { text: 'Answer' }));
-    answerCard.appendChild(createEl('div', {
+    body.appendChild(createEl('div', {
       class: 'ask-answer-body',
       html: renderMarkdown(_state.answer),
     }));
-    body.appendChild(answerCard);
 
     if (_state.refs.length > 0) {
       body.appendChild(createEl('div', {
@@ -367,14 +364,20 @@ function retrieve(question, content, k = 7) {
 // ---------------------------------------------------------------------------
 const SYSTEM_PROMPT = `You are a study companion for Huey Mysliwiec, a PhD student in the Melo-Cardenas lab at Northwestern preparing for her qualifying exam. Her thesis is on DCAF7 → IFIT3 → IFN-α signaling in JAK2V617F myeloproliferative neoplasms.
 
-You answer questions using ONLY the provided excerpts from Huey's Qualifying Exam Study Bible. Stay concise (under ~300 words unless the question demands more), mechanistic, and in the voice of a senior postdoc quickly briefing her — no hedging, no padding, no generic caveats.
+Answer every question in TWO clearly separated sections, in this exact format:
 
-Format rules:
-  • Lead with one punchy sentence that states the answer outright.
-  • Follow with 2–5 tight bullets that unpack the mechanism, evidence, or distinction.
-  • Use **bold** sparingly for gene/protein names and key terms, and *italics* for citations (e.g. *Pichlmair 2011 Nat Immunol*).
-  • If the excerpts don't actually cover the question, say so explicitly — don't fill in from general knowledge.
-  • Don't repeat the question back. Don't introduce your answer with phrases like "Great question" or "Here's what you need to know".`;
+## From your notes
+<Answer based ONLY on the provided excerpts. Be concise (1–5 tight bullets), mechanistic, and in the voice of a senior postdoc briefing Huey — no hedging, no filler. If the excerpts don't cover the question at all, write exactly: "Not covered in your study bible." and nothing else in this section.>
+
+## Additional info
+<Fill in the gaps using general biomedical knowledge. Flag anything that directly contradicts her corpus, but otherwise expand: clarify the distinction she asked about, bring in canonical references that aren't in her notes, note what the field knows that the corpus skips. Keep this section focused — 2–5 bullets or a short paragraph, roughly the same length as the first section.>
+
+Shared formatting rules:
+  • Use **bold** sparingly for gene/protein names and key terms.
+  • Use *italics* for citations (e.g. *Pichlmair 2011 Nat Immunol*).
+  • Don't repeat the question back. No "Great question" or "Here's what you need to know" intros.
+  • If the question is simple and the corpus fully answers it, "Additional info" can be a single clarifying bullet rather than a long aside.
+  • Always output both section headings — even if one section is very short.`;
 
 function buildUserMessage(question, matches) {
   const excerpts = matches.map((m, i) => {
@@ -388,25 +391,68 @@ function buildUserMessage(question, matches) {
 }
 
 // ---------------------------------------------------------------------------
-// Minimal markdown renderer (bold, italic, bullets, paragraphs, inline code)
+// Markdown renderer — recognizes ## headings (which split the answer into
+// "From your notes" and "Additional info" blocks), bullets, bold, italic,
+// inline code. Each ## heading starts a distinct styled section.
 // ---------------------------------------------------------------------------
 function renderMarkdown(src) {
+  // Split on lines that start with ##
+  const blocks = [];
+  const headingRe = /^\s*##\s+(.+?)\s*$/;
+  let current = { heading: null, lines: [] };
+  for (const raw of src.split('\n')) {
+    const m = raw.match(headingRe);
+    if (m) {
+      if (current.heading != null || current.lines.length > 0) blocks.push(current);
+      current = { heading: m[1], lines: [] };
+    } else {
+      current.lines.push(raw);
+    }
+  }
+  if (current.heading != null || current.lines.length > 0) blocks.push(current);
+
+  // If we got structured blocks, render them as labeled sections.
+  if (blocks.length > 1 || (blocks.length === 1 && blocks[0].heading)) {
+    return blocks
+      .filter(b => b.heading || b.lines.join('').trim())
+      .map(b => {
+        const cls = classifyHeading(b.heading);
+        const body = renderBlock(b.lines.join('\n'));
+        const heading = b.heading ? `<div class="ask-sec-head ${cls}">${escapeHtml(b.heading)}</div>` : '';
+        return `<section class="ask-section ${cls}">${heading}${body}</section>`;
+      })
+      .join('');
+  }
+
+  // Fallback — no headings, just render the body
+  return renderBlock(src);
+}
+
+function classifyHeading(h) {
+  if (!h) return 'plain';
+  const low = h.toLowerCase();
+  if (low.includes('your notes') || low.includes('from your') || low.includes('notes')) return 'from-notes';
+  if (low.includes('additional') || low.includes('general') || low.includes('beyond')) return 'additional';
+  return 'plain';
+}
+
+function renderBlock(src) {
   const lines = src.split('\n');
   let html = '';
   let inList = false;
-  for (let raw of lines) {
-    let line = escapeHtml(raw).trim();
+  for (const raw of lines) {
+    const trimmed = raw.trim();
     if (/^\s*[-*•]\s+/.test(raw)) {
       if (!inList) { html += '<ul>'; inList = true; }
-      let item = line.replace(/^[-*•]\s+/, '');
+      let item = escapeHtml(trimmed).replace(/^[-*•]\s+/, '');
       item = applyInline(item);
       html += `<li>${item}</li>`;
       continue;
     }
-    if (inList && line === '') { html += '</ul>'; inList = false; continue; }
+    if (inList && trimmed === '') { html += '</ul>'; inList = false; continue; }
     if (inList) { html += '</ul>'; inList = false; }
-    if (line === '') continue;
-    html += `<p>${applyInline(line)}</p>`;
+    if (trimmed === '') continue;
+    html += `<p>${applyInline(escapeHtml(trimmed))}</p>`;
   }
   if (inList) html += '</ul>';
   return html;
