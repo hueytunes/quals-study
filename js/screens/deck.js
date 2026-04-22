@@ -77,12 +77,14 @@ function renderDeckInto(host, deck, ix, ctx) {
     }),
     createEl('div', { class: 'fc-content sm' }, [card.front]),
   ]);
-  const back = createEl('div', { class: 'fc-face fc-back' }, [
+  // NOTE: don't name this `back` — it would shadow the imported router.back()
+  // and the header's back-arrow onclick would reference this DOM node instead.
+  const backFace = createEl('div', { class: 'fc-face fc-back' }, [
     createEl('div', { class: 'fc-context', text: card.sectionTitle || '' }),
     createEl('div', { class: 'fc-content', text: card.back }),
   ]);
   fc.appendChild(front);
-  fc.appendChild(back);
+  fc.appendChild(backFace);
   fc.addEventListener('click', () => fc.classList.toggle('flipped'));
   stage.appendChild(fc);
   host.appendChild(stage);

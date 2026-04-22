@@ -3,19 +3,34 @@
 export const getEl = (id) => document.getElementById(id);
 export const querySelAll = (sel) => document.querySelectorAll(sel);
 
+const BOOLEAN_ATTRS = new Set([
+  'disabled', 'checked', 'readonly', 'required', 'autofocus',
+  'selected', 'multiple', 'hidden', 'open', 'reversed',
+]);
+
 export function createEl(tag, props = {}, children = []) {
   const el = document.createElement(tag);
   for (const k in props) {
-    if (k === 'class' || k === 'className') el.className = props[k];
-    else if (k === 'text') el.textContent = props[k];
-    else if (k === 'html') el.innerHTML = props[k];
-    else if (k.startsWith('on') && typeof props[k] === 'function') {
-      el.addEventListener(k.slice(2).toLowerCase(), props[k]);
-    } else if (k === 'style' && typeof props[k] === 'object') {
-      Object.assign(el.style, props[k]);
-    } else if (k === 'dataset' && typeof props[k] === 'object') {
-      Object.assign(el.dataset, props[k]);
-    } else el.setAttribute(k, props[k]);
+    const v = props[k];
+    if (k === 'class' || k === 'className') el.className = v;
+    else if (k === 'text') el.textContent = v;
+    else if (k === 'html') el.innerHTML = v;
+    else if (k.startsWith('on') && typeof v === 'function') {
+      el.addEventListener(k.slice(2).toLowerCase(), v);
+    } else if (k === 'style' && typeof v === 'object') {
+      Object.assign(el.style, v);
+    } else if (k === 'dataset' && typeof v === 'object') {
+      Object.assign(el.dataset, v);
+    } else if (BOOLEAN_ATTRS.has(k)) {
+      // HTML boolean attrs: presence = true. setAttribute('disabled','false')
+      // still disables the element, so we must omit the attribute when falsy.
+      if (v) el.setAttribute(k, '');
+      // else leave unset
+    } else if (v == null || v === false) {
+      // Skip null/undefined/false for any attribute
+    } else {
+      el.setAttribute(k, v);
+    }
   }
   for (const c of [].concat(children)) {
     if (c == null) continue;
