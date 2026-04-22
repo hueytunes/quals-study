@@ -255,7 +255,13 @@ async function callAnthropic(systemPrompt, userMessage, apiKey, signal) {
 
 // Ordered list of Gemini free-tier models to try in succession. If the
 // first one is overloaded (503) we transparently fall back to the next.
-const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash'];
+// 1.5-flash was deprecated April 2025; use only 2.x here.
+const GEMINI_MODELS = [
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-flash',
+];
 
 async function callGemini(systemPrompt, userMessage, apiKey, signal) {
   const body = {
