@@ -253,31 +253,53 @@ async function callAnthropic(systemPrompt, userMessage, apiKey, signal) {
   return (data.content || []).map(c => c.text || '').join('\n').trim();
 }
 
+// Ordered list of Gemini free-tier models to try in succession. If the
+// first one is overloaded (503) we transparently fall back to the next.
+const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash'];
+
 async function callGemini(systemPrompt, userMessage, apiKey, signal) {
-  const model = 'gemini-2.5-flash';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ role: 'user', parts: [{ text: userMessage }] }],
-      generationConfig: {
-        maxOutputTokens: 1400,
-        temperature: 0.3,
-      },
-    }),
-    signal,
-  });
-  if (!res.ok) {
-    const txt = await res.text();
-    let msg = `HTTP ${res.status}`;
-    try { const j = JSON.parse(txt); msg = j.error?.message || msg; } catch {}
-    throw new Error(msg);
+  const body = {
+    systemInstruction: { parts: [{ text: systemPrompt }] },
+    contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+    generationConfig: {
+      maxOutputTokens: 1400,
+      temperature: 0.3,
+    },
+  };
+  let lastErr = null;
+  for (const model of GEMINI_MODELS) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+        signal,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const parts = data.candidates?.[0]?.content?.parts || [];
+        return parts.map(p => p.text || '').join('\n').trim();
+      }
+      // 503 / 429 / "overloaded" / "model is experiencing high demand"
+      // → try the next model in the list. 400 / 401 / 403 are the user's
+      // problem (bad key, wrong quota) — surface immediately.
+      const txt = await res.text();
+      let msg = `HTTP ${res.status}`;
+      try { msg = JSON.parse(txt).error?.message || msg; } catch {}
+      const retriable = res.status === 429 || res.status === 500 ||
+                        res.status === 502 || res.status === 503 ||
+                        /overload|high demand|unavailable/i.test(msg);
+      if (!retriable) throw new Error(msg);
+      lastErr = new Error(msg);
+      // fall through to next model
+    } catch (e) {
+      if (e.name === 'AbortError') throw e;
+      lastErr = e;
+      // retry with next model
+    }
   }
-  const data = await res.json();
-  const parts = data.candidates?.[0]?.content?.parts || [];
-  return parts.map(p => p.text || '').join('\n').trim();
+  throw lastErr || new Error('All Gemini models failed.');
 }
 
 // ---------------------------------------------------------------------------
