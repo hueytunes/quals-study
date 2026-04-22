@@ -1,5 +1,5 @@
 /* Cards tab: pick a scope, then study. */
-import { createEl } from '../utils.js';
+import { createEl, tierDisplay } from '../utils.js';
 import { getContent } from '../content.js';
 
 export function renderCards(host) {
@@ -38,8 +38,9 @@ export function renderCards(host) {
   content.tiers.forEach(t => {
     const n = t.sections.reduce((a, s) => a + (s.totalKeyFacts || 0), 0);
     if (n === 0) return;
+    const { eyebrow, short } = tierDisplay(t);
     host.appendChild(createEl('div', { class: 'section-head' }, [
-      createEl('h2', { text: t.title.replace(/^Tier \d+ — /, '') }),
+      createEl('h2', { text: short }),
       createEl('span', { class: 'see-all', text: `${n} cards` }),
     ]));
     host.appendChild(createEl('button', {
@@ -49,7 +50,7 @@ export function renderCards(host) {
     }, [
       createEl('div', { class: 'sect-id', text: '🎴' }),
       createEl('div', { class: 'sect-body' }, [
-        createEl('div', { class: 'sect-title', text: `All cards in ${t.title.match(/^(Tier \d+)/)?.[1]}` }),
+        createEl('div', { class: 'sect-title', text: `All cards in ${eyebrow}` }),
         createEl('div', { class: 'sect-meta', text: `${n} key facts · shuffled` }),
       ]),
       createEl('span', { class: 'sect-chev', html:

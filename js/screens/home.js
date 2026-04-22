@@ -1,5 +1,5 @@
 /* Home: greeting, streak, continue, tier quick-access. */
-import { createEl, greetingEyebrow } from '../utils.js';
+import { createEl, greetingEyebrow, tierDisplay } from '../utils.js';
 import { go } from '../router.js';
 import { getContent } from '../content.js';
 import { getProgress, daysUntilDefense } from '../storage.js';
@@ -89,20 +89,21 @@ export function renderHome(host) {
     const nSections = t.sections.length;
     const nFacts = t.sections.reduce((a, s) => a + (s.totalKeyFacts || 0), 0);
     const nQ = (t.qanda || []).length;
+    const { eyebrow, short } = tierDisplay(t, ix);
     host.appendChild(createEl('button', {
       class: `tier-card t${ix + 1}`,
       onclick: () => {
         import('./tier.js').then(m => m.openTier(t.id));
       },
     }, [
-      createEl('div', { class: 't-eyebrow', text: `Tier ${ix + 1}` }),
-      createEl('h3', { text: t.title.replace(/^Tier \d+ — /, '') }),
+      createEl('div', { class: 't-eyebrow', text: eyebrow }),
+      createEl('h3', { text: short }),
       createEl('div', { class: 't-stats' }, [
         createEl('span', { text: `${nSections} sections` }),
         createEl('span', { text: `${nFacts} facts` }),
         createEl('span', { text: `${nQ} Q&A` }),
       ]),
-      createEl('div', { class: 't-cta', text: 'Open tier →' }),
+      createEl('div', { class: 't-cta', text: t.id === 'supplement' ? 'Open supplement →' : 'Open tier →' }),
     ]));
   });
 

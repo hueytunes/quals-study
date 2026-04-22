@@ -53,16 +53,45 @@ export function escapeHtml(s) {
 /* Prettify the raw prose from the PDF extractor:
    - Paragraphs (blank-line split)
    - Italicize figure callouts
-   - Bold "Key facts:" or inline bold-like labels (crude) */
+   - Bold "Key facts:" or inline bold-like labels (crude)
+   - Render "PMID: … · DOI: … · Model: … · Approach: …" footer as a pill row */
 export function formatProse(body) {
   if (!body) return '';
-  // Split on blank lines
   const paras = body.split(/\n\s*\n+/);
   return paras.map(p => {
-    let x = escapeHtml(p.trim()).replace(/\n/g, ' ');
-    // Bold keywords that look like section labels "Key facts:", "Nuance for committee:", etc.
+    const raw = p.trim();
+    // Supplement paper-footer line: "PMID: … · DOI: [10.x](https://…) · Model: … · Approach: …"
+    const footerM = raw.match(
+      /^PMID:\s*(\d+)\s*[·|]\s*DOI:\s*(?:\[([^\]]+)\]\((https?:\/\/[^)]+)\)|(\S+))(?:\s*[·|]\s*Model:\s*([^·|\n]+?))?(?:\s*[·|]\s*Approach:\s*(.+?))?\s*$/
+    );
+    if (footerM) {
+      const pmid = footerM[1];
+      const doiLabel = footerM[2] || footerM[4] || '';
+      const doiUrl = footerM[3] || (doiLabel ? `https://doi.org/${doiLabel}` : '');
+      const model = footerM[5] ? footerM[5].trim() : '';
+      const approach = footerM[6] ? footerM[6].trim() : '';
+      const pills = [];
+      pills.push(`<a class="pf-pill" href="https://pubmed.ncbi.nlm.nih.gov/${pmid}/" target="_blank" rel="noopener">PMID ${pmid}</a>`);
+      if (doiUrl) pills.push(`<a class="pf-pill" href="${escapeHtml(doiUrl)}" target="_blank" rel="noopener">DOI ${escapeHtml(doiLabel)}</a>`);
+      let footer = `<div class="paper-footer">${pills.join('')}</div>`;
+      if (model) footer += `<div class="paper-meta"><span class="pm-k">Model</span> ${escapeHtml(model)}</div>`;
+      if (approach) footer += `<div class="paper-meta"><span class="pm-k">Approach</span> ${escapeHtml(approach)}</div>`;
+      return footer;
+    }
+    let x = escapeHtml(raw).replace(/\n/g, ' ');
     x = x.replace(/\b(Key facts|Nuance for committee|Takeaway|Clinical relevance|Key residues[^:]*|Key points?)\s*:/gi,
                   '<strong>$1:</strong>');
     return `<p>${x}</p>`;
   }).join('');
+}
+
+/* Display info for a tier — handles Tiers 1-3 and the Supplement. */
+export function tierDisplay(tier, index = 0) {
+  if (!tier) return { eyebrow: '', short: '' };
+  if (tier.id === 'supplement') {
+    return { eyebrow: 'Supplement', short: tier.title.replace(/^Supplement\s*—\s*/, '') };
+  }
+  const m = tier.title.match(/^(Tier \d+)\s*—\s*(.+)$/);
+  if (m) return { eyebrow: m[1], short: m[2] };
+  return { eyebrow: `Tier ${index + 1}`, short: tier.title };
 }

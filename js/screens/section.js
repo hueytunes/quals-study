@@ -1,5 +1,5 @@
 /* Section (reader view): full prose content for one section. */
-import { createEl, svgBack, formatProse } from '../utils.js';
+import { createEl, svgBack, formatProse, tierDisplay } from '../utils.js';
 import { go, back } from '../router.js';
 import { getSection, getTier } from '../content.js';
 import { markSectionViewed, setLastLocation } from '../storage.js';
@@ -26,10 +26,11 @@ function renderSectionInto(host, tierId, sectionId) {
   if (!sec || !tier) return;
 
   // Header
+  const { eyebrow } = tierDisplay(tier);
   host.appendChild(createEl('div', { class: 'screen-header' }, [
     createEl('button', { class: 'back', onclick: () => back() }, [svgBack()]),
     createEl('div', { class: 'title-block' }, [
-      createEl('div', { class: 'eyebrow', text: `${tier.title.match(/^(Tier \d+)/)?.[1]} · ${sec.id}` }),
+      createEl('div', { class: 'eyebrow', text: `${eyebrow} · ${sec.id}` }),
       createEl('h1', { text: sec.title, style: { whiteSpace: 'normal', fontSize: '15px', lineHeight: '1.3' } }),
     ]),
     createEl('div', { style: { width: '38px' } }),

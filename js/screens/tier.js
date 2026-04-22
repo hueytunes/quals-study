@@ -1,5 +1,5 @@
 /* Tier screen: header + list of sections, tap to open one. */
-import { createEl, svgBack } from '../utils.js';
+import { createEl, svgBack, tierDisplay } from '../utils.js';
 import { go, back } from '../router.js';
 import { getTier } from '../content.js';
 import { getProgress } from '../storage.js';
@@ -17,11 +17,12 @@ function renderTierInto(host, tierId) {
   const prog = getProgress();
 
   // Header
+  const { eyebrow, short } = tierDisplay(tier);
   host.appendChild(createEl('div', { class: 'screen-header' }, [
     createEl('button', { class: 'back', onclick: () => back() }, [svgBack()]),
     createEl('div', { class: 'title-block' }, [
-      createEl('div', { class: 'eyebrow', text: tier.title.match(/^(Tier \d+)/)?.[1] || '' }),
-      createEl('h1', { text: tier.title.replace(/^Tier \d+ — /, '') }),
+      createEl('div', { class: 'eyebrow', text: eyebrow }),
+      createEl('h1', { text: short }),
     ]),
     createEl('div', { style: { width: '38px' } }),
   ]));

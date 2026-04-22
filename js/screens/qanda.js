@@ -1,5 +1,5 @@
 /* Q&A tab: pick tier, then browse Q&A inline. */
-import { createEl } from '../utils.js';
+import { createEl, tierDisplay } from '../utils.js';
 import { getContent } from '../content.js';
 import { go } from '../router.js';
 
@@ -37,8 +37,9 @@ export function renderQanda(host) {
   content.tiers.forEach(t => {
     const n = (t.qanda || []).length;
     if (n === 0) return;
+    const { eyebrow, short } = tierDisplay(t);
     host.appendChild(createEl('div', { class: 'section-head' }, [
-      createEl('h2', { text: t.title.replace(/^Tier \d+ — /, '') }),
+      createEl('h2', { text: short }),
       createEl('span', { class: 'see-all', text: `${n} Q&A` }),
     ]));
     host.appendChild(createEl('button', {
@@ -48,7 +49,7 @@ export function renderQanda(host) {
     }, [
       createEl('div', { class: 'sect-id', text: '💬' }),
       createEl('div', { class: 'sect-body' }, [
-        createEl('div', { class: 'sect-title', text: `All Q&A for ${t.title.match(/^(Tier \d+)/)?.[1]}` }),
+        createEl('div', { class: 'sect-title', text: `All Q&A for ${eyebrow}` }),
         createEl('div', { class: 'sect-meta', text: `${n} question${n === 1 ? '' : 's'}` }),
       ]),
       createEl('span', { class: 'sect-chev', html:

@@ -72,7 +72,8 @@ function renderDeckInto(host, deck, ix, ctx) {
 
   const front = createEl('div', { class: 'fc-face fc-front' }, [
     createEl('div', { class: 'fc-context', text:
-      `${(card.tierTitle || '').match(/^(Tier \d+)/)?.[1]} · ${card.sectionId}`
+      `${(card.tierTitle || '').match(/^(Tier \d+)/)?.[1] ||
+         (/^Supplement/.test(card.tierTitle || '') ? 'Supplement' : '')} · ${card.sectionId}`
     }),
     createEl('div', { class: 'fc-content sm' }, [card.front]),
   ]);
