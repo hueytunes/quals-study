@@ -39,6 +39,12 @@ function initTheme() {
   });
 }
 
+function initSettingsButton() {
+  const btn = getEl('settings-btn');
+  if (!btn) return;
+  btn.addEventListener('click', () => go('settings'));
+}
+
 function registerAllScreens() {
   registerScreen('home',     { el: getEl('screen-home'),     render: () => renderHome(getEl('screen-home')),       onEnter: () => renderHome(getEl('screen-home')) });
   registerScreen('topics',   { el: getEl('screen-topics'),   render: () => renderTopics(getEl('screen-topics')),   onEnter: () => renderTopics(getEl('screen-topics')) });
@@ -52,7 +58,12 @@ function registerAllScreens() {
   registerScreen('quizmenu', { el: getEl('screen-quizmenu'), render: () => {} });
   registerScreen('quiz',     { el: getEl('screen-quiz'),     render: () => {} });
   registerScreen('ask',      { el: getEl('screen-ask'),      render: () => {} });
-  registerScreen('settings', { el: getEl('screen-settings'), render: () => renderSettings(getEl('screen-settings')) });
+  // Settings re-renders on every entry so changes show up immediately.
+  registerScreen('settings', {
+    el: getEl('screen-settings'),
+    render: () => renderSettings(getEl('screen-settings')),
+    onEnter: () => renderSettings(getEl('screen-settings')),
+  });
 }
 
 function wireTabs() {
@@ -123,6 +134,7 @@ function showLoading() {
 document.addEventListener('DOMContentLoaded', async () => {
   initTheme();
   registerAllScreens();
+  initSettingsButton();
   wireTabs();
   wireSwipes();
 

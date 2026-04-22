@@ -1,7 +1,18 @@
-/* Settings: theme + defense date + reset progress. */
+/* Settings: theme + defense date + Ask-Me provider + reset progress. */
 import { createEl, svgBack } from '../utils.js';
 import { back } from '../router.js';
 import { getSettings, setSetting, getProgress, setProgress } from '../storage.js';
+
+const askInputStyle = {
+  padding: '12px 14px', borderRadius: '12px',
+  border: '2px solid transparent', background: 'var(--cream-deep)',
+  fontSize: '14px', width: '100%', outline: 'none',
+  fontFamily: 'monospace,inherit', color: 'var(--ink)',
+};
+const askNoteStyle = {
+  fontSize: '12px', color: 'var(--ink-soft)',
+  margin: '8px 0 0', lineHeight: '1.55',
+};
 
 export function renderSettings(host) {
   host.innerHTML = '';
@@ -44,29 +55,68 @@ export function renderSettings(host) {
   ]);
   host.appendChild(defenseCard);
 
-  // Anthropic API key (for "Ask Me")
-  const apiCard = createEl('div', { class: 'sub-card', style: { marginBottom: '14px' } }, [
-    createEl('h4', { text: 'Ask Me — API key' }),
-    createEl('input', {
+  // Ask Me — provider + API key
+  const askCard = createEl('div', { class: 'sub-card', style: { marginBottom: '14px' } }, [
+    createEl('h4', { text: 'Ask Me — provider' }),
+  ]);
+
+  // Provider selector (segmented)
+  const providers = [
+    { id: 'gemini', label: 'Google Gemini', badge: 'free' },
+    { id: 'anthropic', label: 'Anthropic', badge: 'paid' },
+  ];
+  const seg = createEl('div', { class: 'seg-row', style: { marginBottom: '10px' } });
+  const segBtns = {};
+  providers.forEach(p => {
+    const active = s.askProvider === p.id;
+    const btn = createEl('button', {
+      class: `seg-btn ${active ? 'active' : ''}`,
+      onclick: () => {
+        setSetting('askProvider', p.id);
+        renderSettings(host);
+      },
+    }, [
+      createEl('span', { text: p.label }),
+      createEl('span', { class: `seg-badge ${p.badge}`, text: p.badge }),
+    ]);
+    segBtns[p.id] = btn;
+    seg.appendChild(btn);
+  });
+  askCard.appendChild(seg);
+
+  // Provider-specific field
+  if (s.askProvider === 'gemini') {
+    askCard.appendChild(createEl('div', { class: 'field-label', text: 'API key' }));
+    askCard.appendChild(createEl('input', {
       type: 'password',
-      value: s.apiKey || '',
+      value: s.geminiKey || '',
+      placeholder: 'AIza…',
+      class: 'input',
+      autocomplete: 'off', autocorrect: 'off', spellcheck: 'false',
+      style: askInputStyle,
+      onchange: (e) => setSetting('geminiKey', e.target.value.trim() || null),
+    }));
+    askCard.appendChild(createEl('p', {
+      style: askNoteStyle,
+      html: 'Free tier — 15 requests/minute, 1500/day. Get a key (no card required) at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" style="color:var(--coral-deep);text-decoration:underline">aistudio.google.com</a>. Key stays on this device.',
+    }));
+  } else {
+    askCard.appendChild(createEl('div', { class: 'field-label', text: 'API key' }));
+    askCard.appendChild(createEl('input', {
+      type: 'password',
+      value: s.anthropicKey || '',
       placeholder: 'sk-ant-…',
       class: 'input',
       autocomplete: 'off', autocorrect: 'off', spellcheck: 'false',
-      style: {
-        padding: '12px 14px', borderRadius: '12px',
-        border: '2px solid transparent', background: 'var(--cream-deep)',
-        fontSize: '14px', width: '100%', outline: 'none',
-        fontFamily: 'monospace,inherit', color: 'var(--ink)',
-      },
-      onchange: (e) => setSetting('apiKey', e.target.value.trim() || null),
-    }),
-    createEl('p', {
-      style: { fontSize: '12px', color: 'var(--ink-soft)', margin: '8px 0 0', lineHeight: '1.55' },
-      html: 'Your Anthropic API key is stored locally on this device and sent directly to api.anthropic.com when you use Ask Me. Get one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" style="color:var(--coral-deep);text-decoration:underline">console.anthropic.com</a>.',
-    }),
-  ]);
-  host.appendChild(apiCard);
+      style: askInputStyle,
+      onchange: (e) => setSetting('anthropicKey', e.target.value.trim() || null),
+    }));
+    askCard.appendChild(createEl('p', {
+      style: askNoteStyle,
+      html: 'Pay-as-you-go (~$0.01–0.02 per question with Sonnet). Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" style="color:var(--coral-deep);text-decoration:underline">console.anthropic.com</a>. Key stays on this device.',
+    }));
+  }
+  host.appendChild(askCard);
 
   // Progress
   const progCard = createEl('div', { class: 'sub-card', style: { marginBottom: '14px' } }, [

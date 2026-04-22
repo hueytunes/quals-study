@@ -19,11 +19,20 @@ function safeWrite(k, v) {
 export const DEFAULT_SETTINGS = {
   theme: 'auto',
   defenseDate: null,       // ISO string, optional
-  apiKey: null,            // Anthropic API key for "Ask Me" (stored locally)
+  askProvider: 'gemini',   // 'gemini' (free tier) | 'anthropic'
+  geminiKey: null,         // Google AI Studio API key
+  anthropicKey: null,      // Anthropic API key
+  apiKey: null,            // Legacy — migrated to anthropicKey on read
 };
 
 export function getSettings() {
-  return { ...DEFAULT_SETTINGS, ...safeRead(KEY_SETTINGS, {}) };
+  const s = { ...DEFAULT_SETTINGS, ...safeRead(KEY_SETTINGS, {}) };
+  // Migrate legacy `apiKey` → anthropicKey
+  if (s.apiKey && !s.anthropicKey) {
+    s.anthropicKey = s.apiKey;
+    s.apiKey = null;
+  }
+  return s;
 }
 export function setSetting(key, value) {
   const s = getSettings(); s[key] = value; safeWrite(KEY_SETTINGS, s);

@@ -36,7 +36,8 @@ function render(host) {
   ]));
 
   const settings = getSettings();
-  const hasKey = !!(settings.apiKey && settings.apiKey.length > 10);
+  const hasKey = providerHasKey(settings);
+  const providerLabel = settings.askProvider === 'gemini' ? 'Google Gemini' : 'Anthropic';
 
   // Input row
   const input = createEl('textarea', {
@@ -70,12 +71,15 @@ function render(host) {
   host.appendChild(body);
 
   if (!hasKey) {
+    const freeHint = settings.askProvider === 'gemini'
+      ? 'Google Gemini has a free tier (1500 requests/day, no credit card) — paste a key from aistudio.google.com.'
+      : 'Anthropic requires a paid key. You can switch to the Google Gemini free tier in Settings.';
     body.appendChild(createEl('div', { class: 'sub-card ask-nokey' }, [
       createEl('div', { style: { fontSize: '28px', marginBottom: '6px' }, text: '🔐' }),
-      createEl('h4', { text: 'API key required' }),
+      createEl('h4', { text: `${providerLabel} API key required` }),
       createEl('p', {
         style: { fontSize: '13.5px', color: 'var(--ink-soft)', lineHeight: '1.55', margin: '4px 0 12px' },
-        html: 'Ask Me calls the Anthropic API directly from your browser. Paste a key in Settings to enable it. Your key never leaves this device.',
+        text: freeHint,
       }),
       createEl('button', {
         class: 'ask-cta',
@@ -85,6 +89,13 @@ function render(host) {
     ]));
     return;
   }
+
+  // Provider badge
+  body.appendChild(createEl('div', {
+    class: 'eyebrow',
+    style: { marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' },
+    html: `Using <strong style="font-weight:800">${providerLabel}</strong>${settings.askProvider === 'gemini' ? ' · <span style="color:var(--sage-deep)">free tier</span>' : ''}`,
+  }));
 
   // Example chips — tap to prefill
   if (!_state.question && !_state.answer) {
@@ -159,13 +170,20 @@ function render(host) {
 // ---------------------------------------------------------------------------
 // Submission flow
 // ---------------------------------------------------------------------------
+function providerHasKey(s) {
+  const key = s.askProvider === 'gemini' ? s.geminiKey : s.anthropicKey;
+  return !!(key && key.length > 10);
+}
+
 async function doAsk(host, question) {
   question = (question || '').trim();
   if (!question) return;
   const settings = getSettings();
-  if (!settings.apiKey) { _state.error = 'No API key configured.'; render(host); return; }
+  if (!providerHasKey(settings)) {
+    _state.error = 'No API key configured for this provider.';
+    render(host); return;
+  }
 
-  // Abort any in-flight request
   if (_state.abortController) _state.abortController.abort();
   const ctrl = new AbortController();
 
@@ -191,31 +209,12 @@ async function doAsk(host, question) {
   const userMessage = buildUserMessage(question, matches);
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': settings.apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-5',
-        max_tokens: 1200,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }],
-      }),
-      signal: ctrl.signal,
-    });
-
-    if (!res.ok) {
-      const txt = await res.text();
-      let msg = `HTTP ${res.status}`;
-      try { const j = JSON.parse(txt); msg = j.error?.message || msg; } catch {}
-      throw new Error(msg);
+    let text;
+    if (settings.askProvider === 'gemini') {
+      text = await callGemini(systemPrompt, userMessage, settings.geminiKey, ctrl.signal);
+    } else {
+      text = await callAnthropic(systemPrompt, userMessage, settings.anthropicKey, ctrl.signal);
     }
-    const data = await res.json();
-    const text = (data.content || []).map(c => c.text || '').join('\n').trim();
     _state.answer = text || '(empty response)';
     _state.loading = false;
   } catch (e) {
@@ -225,6 +224,60 @@ async function doAsk(host, question) {
   }
   _state.abortController = null;
   render(host);
+}
+
+async function callAnthropic(systemPrompt, userMessage, apiKey, signal) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 1200,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    }),
+    signal,
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    let msg = `HTTP ${res.status}`;
+    try { const j = JSON.parse(txt); msg = j.error?.message || msg; } catch {}
+    throw new Error(msg);
+  }
+  const data = await res.json();
+  return (data.content || []).map(c => c.text || '').join('\n').trim();
+}
+
+async function callGemini(systemPrompt, userMessage, apiKey, signal) {
+  const model = 'gemini-2.5-flash';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+      generationConfig: {
+        maxOutputTokens: 1400,
+        temperature: 0.3,
+      },
+    }),
+    signal,
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    let msg = `HTTP ${res.status}`;
+    try { const j = JSON.parse(txt); msg = j.error?.message || msg; } catch {}
+    throw new Error(msg);
+  }
+  const data = await res.json();
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  return parts.map(p => p.text || '').join('\n').trim();
 }
 
 // ---------------------------------------------------------------------------
