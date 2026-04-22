@@ -10,8 +10,31 @@ LIGATURES = {
     "\u00a0": " ", "\u2009": " ", "\u202f": " ",
     "\u2011": "-", "\u2012": "-",
 }
+# PDF extraction sometimes drops a space between a leading capital and the
+# rest of a word (most often for "T umor" / "T arget" / "T ype", occasionally
+# for others). Fix the specific known artifacts — don't generalize (else we
+# break valid patterns like "B cell" or "T cell").
+LIGATURE_WORDS = {
+    "T umor": "Tumor", "t umor": "tumor",
+    "T opology": "Topology", "t opology": "topology",
+    "T opologies": "Topologies", "t opologies": "topologies",
+    "T arget": "Target", "t arget": "target",
+    "T argets": "Targets", "t argets": "targets",
+    "T argeted": "Targeted", "t argeted": "targeted",
+    "T argeting": "Targeting", "t argeting": "targeting",
+    "T ransplantation": "Transplantation",
+    "T ransplant": "Transplant",
+    "T ranscription": "Transcription",
+    "T ranscriptional": "Transcriptional",
+    "T ype": "Type", "t ype": "type",
+    "T ypes": "Types", "t ypes": "types",
+    "T ime": "Time", "t ime": "time",
+    "T iming": "Timing", "t iming": "timing",
+}
 def clean(s: str) -> str:
     for k, v in LIGATURES.items():
+        s = s.replace(k, v)
+    for k, v in LIGATURE_WORDS.items():
         s = s.replace(k, v)
     # Rejoin words broken across lines: "ubiq-\nuitin" or "ubiq- uitin" (PDF
     # line-wraps with a space between halves).
@@ -103,34 +126,39 @@ def _looks_like_body_start(word: str) -> bool:
         return True
     return False
 
-def _split_title_and_body(raw: str, cap_words: int = 14) -> tuple[str, str]:
+def _split_title_and_body(raw: str, cap_words: int = 10) -> tuple[str, str]:
     """The PDF extraction often yields a subsection heading with its body
     prose run together. We heuristically split at:
-      (a) a ". " (period-space) boundary within the first ~cap_words words, or
-      (b) the first word in _BODY_STARTERS after position 3, or
-      (c) at cap_words as a last-resort fallback.
+      (b) the first word that looks like a sentence-start, preferred — this
+          gives the cleanest break at the title/body boundary (e.g.
+          "Why chain topology matters | Ubiquitin chain topology dictates…"),
+      (a) or at a ". " (period-space) boundary within the first ~cap_words
+          words if (b) didn't find a clean break,
+      (c) or at cap_words as a last-resort fallback.
     Returns (title, body_prefix) — body_prefix may be empty string."""
     raw = raw.strip()
     if not raw:
         return "", ""
-    # If the whole thing is short, treat as pure title
     words = raw.split()
-    if len(words) <= 8:
+    if len(words) <= 7:
         return raw, ""
-    # (a) Sentence boundary "..period.. Capitalword"
-    m = re.search(r"([\.!?])\s+([A-Z])", raw)
-    if m and raw[:m.start()+1].count(" ") <= cap_words:
-        title = raw[: m.end() - 1].rstrip()
-        body = raw[m.end() - 1:].lstrip()
-        if title and body:
-            return title.rstrip(".!?"), body
-    # (b) Body-starter word at position >= 3
+    # (b) Preferred — first body-starter word at position ≥ 3.
     for i in range(3, min(len(words), cap_words + 4)):
         if _looks_like_body_start(words[i]):
             title = " ".join(words[:i])
             body = " ".join(words[i:])
             return title, body
-    # (c) fallback
+    # (a) Sentence boundary fallback. Only accept if the resulting title is
+    # at most cap_words words — don't leave a 12-word "title".
+    m = re.search(r"([\.!?])\s+([A-Z])", raw)
+    if m:
+        prefix = raw[: m.end() - 1]
+        if prefix.count(" ") + 1 <= cap_words:
+            title = prefix.rstrip().rstrip(".!?")
+            body = raw[m.end() - 1:].lstrip()
+            if title and body:
+                return title, body
+    # (c) last-resort fallback
     return " ".join(words[:cap_words]), " ".join(words[cap_words:])
 
 def _split_inline_subsubs(body: str) -> list[dict]:
@@ -173,14 +201,24 @@ def _maybe_extend_title(title: str, body: str) -> tuple[str, str]:
     ends_dash = raw.endswith(("—", "–", "-"))
     if not ends_dash and tail not in _CONTINUATION_WORDS:
         return title, body
-    # How many words already in title — cap pulled chunk to keep title readable
-    remaining_budget = max(0, 12 - len(t_words))
-    if remaining_budget == 0:
+    # Budget: at most 10 words total in the title and at most 80 chars total.
+    remaining_budget = max(0, 10 - len(t_words))
+    max_chars = 80 - len(raw)
+    if remaining_budget == 0 or max_chars <= 0:
         return title, body
     b_words = body.split()
     consumed = 0
+    char_cost = 0
     for i, w in enumerate(b_words):
         if i > 0 and _looks_like_body_start(w):
+            break
+        # Stop at a `(` or `)` or `.` — these usually signal a paren-aside
+        # or a sentence boundary (e.g. "Lear 2025 Sci Adv and BC18630 is…")
+        if w.startswith("(") or w.endswith("."):
+            consumed = i + 1
+            break
+        char_cost += len(w) + 1
+        if char_cost > max_chars:
             break
         consumed = i + 1
         if i >= remaining_budget - 1:
@@ -249,7 +287,85 @@ def extract_facts(body):
             fact = re.sub(r"\s+", " ", b.strip())
             if 15 < len(fact) < 600:
                 facts.append(fact)
+    # Fallback — if no explicit "Key facts:" block, pull the most
+    # flashcard-worthy sentences out of the prose. This gives tiers 2 and 3
+    # (which don't use the "Key facts:" convention) a deck to study from.
+    if not facts:
+        facts = _mine_fact_sentences(body, want=2)
     return facts
+
+# Common sentence openers that rarely lead a memorable fact.
+_FLABBY_OPENERS = {
+    "However,", "Importantly,", "Notably,", "In contrast,", "In summary,",
+    "Moreover,", "Furthermore,", "Additionally,", "Still,", "Rather,",
+    "Thus,", "Therefore,", "Thus", "Therefore", "Finally,", "Consequently,",
+    "Indeed,", "Nonetheless,", "Meanwhile,", "Interestingly,",
+}
+
+def _score_fact(sentence: str) -> int:
+    """Heuristic flashcard-worthiness score. Higher = more memorable."""
+    s = sentence.strip()
+    if not s:
+        return 0
+    # Penalize by length extremes
+    n = len(s)
+    if n < 70 or n > 320:
+        return 0
+    score = 0
+    # Numbers / quantities
+    if re.search(r"\b\d", s):
+        score += 3
+    # ALL-CAPS gene/protein names (3+ letters)
+    caps_hits = len(re.findall(r"\b[A-Z]{3,}\b", s))
+    score += min(caps_hits, 4)
+    # Named entities like "Smith 2019" or "Liu et al."
+    if re.search(r"\b[A-Z][a-z]+\s+(?:et al\.?|\d{4})\b", s):
+        score += 2
+    # Specific biology/methodology keywords
+    for kw in ("PMID", "IC50", "Ki", "Kd", "nM", "µM", "%", "half-life", "Cre",
+               "knockout", "CRISPR", "JAK2V617F", "DCAF7", "IFIT", "MAVS",
+               "TBK1", "STAT", "MPN", "UPS", "CRL4", "SLAM", "LSK"):
+        if kw in s:
+            score += 1
+    # Penalize vague, meta-sounding openings
+    first_word = s.split(" ", 1)[0]
+    if first_word in _FLABBY_OPENERS:
+        score -= 2
+    # Penalize questions (facts > questions for study cards)
+    if s.endswith("?"):
+        score -= 2
+    return score
+
+def _mine_fact_sentences(body: str, want: int = 2) -> list[str]:
+    if not body:
+        return []
+    # Split into sentences on `. ` boundaries, keeping punctuation
+    # Light protection for "e.g." / "et al." / decimal numbers
+    protected = (body
+        .replace("e.g.", "e_g_")
+        .replace("i.e.", "i_e_")
+        .replace("et al.", "et al_")
+        .replace("Fig.", "Fig_")
+        .replace("vs.", "vs_"))
+    # Split on sentence-ending punctuation followed by whitespace + Capital
+    raw = re.split(r"(?<=[\.!])\s+(?=[A-Z])", protected)
+    sentences = []
+    for s in raw:
+        s = s.replace("e_g_", "e.g.").replace("i_e_", "i.e.") \
+             .replace("et al_", "et al.").replace("Fig_", "Fig.").replace("vs_", "vs.")
+        s = re.sub(r"\s+", " ", s).strip()
+        if s:
+            sentences.append(s)
+    scored = [(_score_fact(s), s) for s in sentences]
+    scored.sort(key=lambda x: -x[0])
+    out = []
+    for score, s in scored:
+        if score <= 1:
+            break
+        out.append(s)
+        if len(out) >= want:
+            break
+    return out
 
 # Part II: Q&A. Two formats observed across tiers:
 #   "Q1. Question... \n <answer>..." (tier 2)

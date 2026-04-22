@@ -44,6 +44,30 @@ export function renderSettings(host) {
   ]);
   host.appendChild(defenseCard);
 
+  // Anthropic API key (for "Ask Me")
+  const apiCard = createEl('div', { class: 'sub-card', style: { marginBottom: '14px' } }, [
+    createEl('h4', { text: 'Ask Me — API key' }),
+    createEl('input', {
+      type: 'password',
+      value: s.apiKey || '',
+      placeholder: 'sk-ant-…',
+      class: 'input',
+      autocomplete: 'off', autocorrect: 'off', spellcheck: 'false',
+      style: {
+        padding: '12px 14px', borderRadius: '12px',
+        border: '2px solid transparent', background: 'var(--cream-deep)',
+        fontSize: '14px', width: '100%', outline: 'none',
+        fontFamily: 'monospace,inherit', color: 'var(--ink)',
+      },
+      onchange: (e) => setSetting('apiKey', e.target.value.trim() || null),
+    }),
+    createEl('p', {
+      style: { fontSize: '12px', color: 'var(--ink-soft)', margin: '8px 0 0', lineHeight: '1.55' },
+      html: 'Your Anthropic API key is stored locally on this device and sent directly to api.anthropic.com when you use Ask Me. Get one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" style="color:var(--coral-deep);text-decoration:underline">console.anthropic.com</a>.',
+    }),
+  ]);
+  host.appendChild(apiCard);
+
   // Progress
   const progCard = createEl('div', { class: 'sub-card', style: { marginBottom: '14px' } }, [
     createEl('h4', { text: 'Progress' }),

@@ -20,6 +20,7 @@ const SCREEN_TO_TAB = {
   tier: 'topics',
   section: 'topics',
   settings: 'home',
+  ask: 'home',
   cards: 'cards',
   deck: 'cards',
   quizmenu: 'cards',

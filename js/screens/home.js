@@ -113,16 +113,19 @@ export function renderHome(host) {
   ]));
 
   const quickRow = createEl('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' } });
-  quickRow.appendChild(quickTile('Mix all cards', '🎴', 'Shuffle flashcards across every tier', () => {
-    import('./deck.js').then(m => m.openDeck({ tierId: null, sectionId: null, mixed: true }));
+  quickRow.appendChild(quickTile('Ask me', '🤖', 'Natural-language Q across the corpus', () => {
+    import('./ask.js').then(m => m.openAsk());
   }));
   quickRow.appendChild(quickTile('Quiz me', '✍️', 'Multiple-choice with explanations', () => {
     import('./quiz-menu.js').then(m => m.openQuizMenu());
   }));
   host.appendChild(quickRow);
 
-  // Second row — general Q&A stays accessible via the tab bar
-  const quickRow2 = createEl('div', { style: { display: 'grid', gridTemplateColumns: '1fr', gap: '10px', marginTop: '10px' } });
+  // Second row — mix-all cards + all-Q&A
+  const quickRow2 = createEl('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px' } });
+  quickRow2.appendChild(quickTile('Mix all cards', '🎴', 'Shuffle flashcards across every tier', () => {
+    import('./deck.js').then(m => m.openDeck({ tierId: null, sectionId: null, mixed: true }));
+  }));
   quickRow2.appendChild(quickTile('All Q&A', '💬', 'Browse every committee question', () => {
     go('qanda');
   }));

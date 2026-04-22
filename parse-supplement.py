@@ -146,13 +146,13 @@ for i, sec_m in enumerate(section_heads):
 
         # "Section scope and rationale" — emit as a single-subsection scope section
         if t_lower.startswith("section scope"):
-            scope_id = f"S{sec_num}.scope"
-            scope_title = f"§{sec_num} — Scope & rationale"
-            # Single overview subsection with the whole prose
+            # Use a clean, chapter-aligned ID (no ".scope" suffix in the pill).
+            scope_id = f"S{sec_num}.0"
+            scope_title = f"§{sec_num} · Scope & rationale"
             prose = strip_md(axis_body).strip()
             sub = {
                 "id": None,
-                "title": f"{sec_title}: scope & rationale",
+                "title": f"Scope & rationale — {sec_title}",
                 "body": prose,
                 "keyFacts": [],
             }

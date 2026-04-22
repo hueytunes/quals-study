@@ -19,6 +19,7 @@ function safeWrite(k, v) {
 export const DEFAULT_SETTINGS = {
   theme: 'auto',
   defenseDate: null,       // ISO string, optional
+  apiKey: null,            // Anthropic API key for "Ask Me" (stored locally)
 };
 
 export function getSettings() {

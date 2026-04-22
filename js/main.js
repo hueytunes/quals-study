@@ -14,6 +14,7 @@ import { renderQanda } from './screens/qanda.js';
 import { renderQList } from './screens/qlist.js';
 import { renderQuizMenu } from './screens/quiz-menu.js';
 import { renderQuiz } from './screens/quiz.js';
+import { renderAsk } from './screens/ask.js';
 import { renderSettings } from './screens/settings.js';
 
 function applyTheme(theme) {
@@ -50,6 +51,7 @@ function registerAllScreens() {
   registerScreen('qlist',    { el: getEl('screen-qlist'),    render: () => {} });
   registerScreen('quizmenu', { el: getEl('screen-quizmenu'), render: () => {} });
   registerScreen('quiz',     { el: getEl('screen-quiz'),     render: () => {} });
+  registerScreen('ask',      { el: getEl('screen-ask'),      render: () => {} });
   registerScreen('settings', { el: getEl('screen-settings'), render: () => renderSettings(getEl('screen-settings')) });
 }
 
@@ -97,12 +99,11 @@ function wireSwipes() {
       if (nextIx < 0 || nextIx >= TAB_ORDER.length) return;
       go(TAB_ORDER[nextIx]);
     } else if (dx > 0) {
-      // Swipe right on a detail screen = go back. Only trigger if the swipe
-      // started in the left 25% of the screen (iOS-style edge-swipe) so we
-      // don't fight horizontal interactions inside the screen.
-      if (startX < window.innerWidth * 0.25) {
-        back();
-      }
+      // Swipe right on a detail screen = go back. Only trigger on a real
+      // iOS-style edge swipe (< 30px from the left edge) so we don't fight
+      // horizontal interactions inside the screen (flashcard swipes, chips,
+      // etc). The swipe also has to be at least 80px to count.
+      if (startX < 30 && dx > 80) back();
     }
   }, { passive: true });
 }
