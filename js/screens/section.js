@@ -62,10 +62,11 @@ function renderSectionInto(host, tierId, sectionId) {
   sec.subsections.forEach(sub => {
     const card = createEl('div', { class: 'sub-card' });
     if (sub.id || sub.title) {
-      card.appendChild(createEl('h4', {}, [
+      const h4 = createEl('h4', { class: 'subsection-heading' }, [
         sub.id ? createEl('span', { class: 'subsection-id', text: sub.id }) : null,
-        sub.title || '',
-      ]));
+        createEl('span', { class: 'subsection-title', text: sub.title || '' }),
+      ]);
+      card.appendChild(h4);
     }
     const body = createEl('div', { class: 'reader-body', html: formatProse(sub.body) });
     card.appendChild(body);
@@ -99,11 +100,24 @@ function navBtn(lead, title, sec, tierId, dir) {
       fontFamily: 'inherit', cursor: 'pointer',
       textAlign: dir === 'right' ? 'right' : 'left',
       boxShadow: '0 4px 12px -8px rgba(42,31,20,0.12)',
+      overflow: 'hidden',
+      minWidth: '0',        // allow grid children to shrink below content width
     },
     onclick: () => openSection(tierId, sec.id),
   }, [
     createEl('div', { style: { fontSize: '10.5px', fontWeight: '800', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--coral-deep)' }, text: lead }),
-    createEl('div', { style: { fontSize: '13px', fontWeight: '700', color: 'var(--ink)', marginTop: '3px', lineHeight: '1.3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, text: title }),
+    createEl('div', {
+      style: {
+        fontSize: '13px', fontWeight: '700', color: 'var(--ink)',
+        marginTop: '3px', lineHeight: '1.35',
+        // Clamp to 2 lines instead of 1 so longer titles remain readable
+        display: '-webkit-box',
+        WebkitLineClamp: '2', WebkitBoxOrient: 'vertical',
+        overflow: 'hidden', textOverflow: 'ellipsis',
+        wordBreak: 'break-word',
+      },
+      text: title,
+    }),
   ]);
 }
 

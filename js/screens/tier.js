@@ -37,33 +37,87 @@ function renderTierInto(host, tierId) {
   }));
   host.appendChild(qr);
 
-  // Sections
+  // Group sections by their top-level letter (A, A.1, A.2 → group "A";
+  // C, C1, C2, C3a → group "C"; S1.A, S1.B → group "§1"). This makes the
+  // flat ~80-section lists readable.
+  const groups = groupSections(tier.sections);
   host.appendChild(createEl('div', { class: 'section-head' }, [
     createEl('h2', { text: `${tier.sections.length} sections` }),
+    createEl('span', { class: 'see-all', text: `${groups.length} chapters` }),
   ]));
 
-  tier.sections.forEach(s => {
-    const viewed = !!prog.sectionsViewed[`${tierId}:${s.id}`];
-    host.appendChild(createEl('button', {
-      class: 'sect-item',
-      onclick: () => {
-        import('./section.js').then(m => m.openSection(tierId, s.id));
-      },
-    }, [
-      createEl('div', { class: 'sect-id', text: s.id }),
-      createEl('div', { class: 'sect-body' }, [
-        createEl('div', { class: 'sect-title', text: s.title }),
-        createEl('div', { class: 'sect-meta', text:
-          `${s.subsections.length} sub${s.subsections.length === 1 ? 'section' : 'sections'}${
-            s.totalKeyFacts ? ` · ${s.totalKeyFacts} key facts` : ''
-          }${viewed ? ' · ✓ viewed' : ''}`
-        }),
-      ]),
-      createEl('span', { class: 'sect-chev', html:
-        '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>'
-      }),
+  for (const g of groups) {
+    // Chapter header
+    host.appendChild(createEl('div', { class: 'chapter-head' }, [
+      createEl('div', { class: 'chapter-letter', text: g.key }),
+      createEl('div', { class: 'chapter-title', text: g.label }),
     ]));
-  });
+    for (const s of g.items) {
+      const viewed = !!prog.sectionsViewed[`${tierId}:${s.id}`];
+      host.appendChild(createEl('button', {
+        class: 'sect-item',
+        onclick: () => {
+          import('./section.js').then(m => m.openSection(tierId, s.id));
+        },
+      }, [
+        createEl('div', { class: 'sect-id', text: s.id }),
+        createEl('div', { class: 'sect-body' }, [
+          createEl('div', { class: 'sect-title', text: s.title }),
+          createEl('div', { class: 'sect-meta', text:
+            `${s.subsections.length} sub${s.subsections.length === 1 ? 'section' : 'sections'}${
+              s.totalKeyFacts ? ` · ${s.totalKeyFacts} key facts` : ''
+            }${viewed ? ' · ✓ viewed' : ''}`
+          }),
+        ]),
+        createEl('span', { class: 'sect-chev', html:
+          '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>'
+        }),
+      ]));
+    }
+  }
+}
+
+/* Determine the chapter bucket for a section id.
+   A, A.1, A1, A.1.2, A1.2 → "A"
+   C3a → "C"
+   S1.A → "§1"    (supplement tier id scheme) */
+function chapterKey(id) {
+  if (!id) return '—';
+  if (id.startsWith('S')) {
+    const m = id.match(/^S(\d+)/);
+    return m ? `§${m[1]}` : id;
+  }
+  const m = id.match(/^([A-Z])/);
+  return m ? m[1] : id;
+}
+
+function groupSections(sections) {
+  const groups = new Map();
+  for (const s of sections) {
+    const k = chapterKey(s.id);
+    if (!groups.has(k)) groups.set(k, { key: k, label: '', items: [] });
+    groups.get(k).items.push(s);
+  }
+  // For each group, use the first "overview-only" section's title as the
+  // chapter label (e.g. section "A" titled "The Ubiquitin-Proteasome System"
+  // becomes the chapter header, and A.1, A.2, etc become entries under it).
+  // Then filter that overview-only parent from the items to avoid dup.
+  for (const g of groups.values()) {
+    const overview = g.items.find(s =>
+      s.id === g.key || s.id === g.key.replace('§', 'S') ||
+      s.subsections.length === 1 && s.subsections[0].title === 'Overview'
+    );
+    if (overview && overview.title && overview.title.length > 0) {
+      g.label = overview.title;
+      // Only hide a pure "Overview" parent if its body is short; otherwise keep
+      // it so the user can still read the chapter intro.
+      if (overview.id === g.key || (overview.subsections.length === 1 && overview.subsections[0].title === 'Overview' && (overview.subsections[0].body || '').length < 400)) {
+        g.items = g.items.filter(s => s !== overview);
+      }
+    }
+    if (!g.label) g.label = `Chapter ${g.key}`;
+  }
+  return Array.from(groups.values());
 }
 
 function quickTile(title, icon, onclick) {

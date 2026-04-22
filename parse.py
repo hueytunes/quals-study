@@ -64,8 +64,149 @@ SUBSUB_PAT = re.compile(
     re.MULTILINE,
 )
 
+# Inline sub-subsection marker: e.g. "C3a. Kinase scaffolding — …" that appears
+# mid-paragraph (start of line or after a newline). The PDF extractor often
+# joins these headings with their parent paragraph, so we need to split them out.
+INLINE_SUBSUB_PAT = re.compile(
+    r"(?:^|\n)\s*([A-Z]\d+[a-z])\.\s+(.+)",
+    re.DOTALL
+)
+
 KF_RE = re.compile(r"Key\s+facts?\s*:?\s*\n(.*?)(?=\n{2}|\nA\.\d|\nB\.\d|\n[A-Z]\.\d|\n[A-Z]\d+\.|\Z)",
                     re.DOTALL | re.IGNORECASE)
+
+# Words that almost always start a body sentence — not part of a subsection title.
+# Used to detect where a title ends and the body begins when the PDF extractor
+# stripped the newline between them.
+_BODY_STARTERS = set("""
+Before After Although Because During Here However Importantly Indeed Moreover
+Nonetheless Notably Significantly Such Additionally Meanwhile Once Rather Since
+Then Therefore Thus Thus, This These Those Since The This paper Humans Mice Mammals
+Vertebrates Mammalian Most Many Some Few Other Another One Two Three Four Five
+Six Seven Eight Nine Ten Unlike While Whereas In a In the In this Finally Still
+When Where Who What If Its It Both Either Neither Every Each All An A New
+We Our At By For From With Without Beyond Above Below
+""".split())
+
+def _looks_like_body_start(word: str) -> bool:
+    """Does this word look like the start of a body sentence (rather than a
+    continuation of a title)?"""
+    if not word:
+        return False
+    if word in _BODY_STARTERS:
+        return True
+    # Multi-char ALL-CAPS words (gene names, acronyms) are usually mid-title.
+    if len(word) > 1 and word.isupper():
+        return False
+    # Starts with capital, at least 4 chars — almost certainly a sentence-starter.
+    if word[0].isupper() and word[1:2].islower() and len(word) >= 4:
+        return True
+    return False
+
+def _split_title_and_body(raw: str, cap_words: int = 14) -> tuple[str, str]:
+    """The PDF extraction often yields a subsection heading with its body
+    prose run together. We heuristically split at:
+      (a) a ". " (period-space) boundary within the first ~cap_words words, or
+      (b) the first word in _BODY_STARTERS after position 3, or
+      (c) at cap_words as a last-resort fallback.
+    Returns (title, body_prefix) — body_prefix may be empty string."""
+    raw = raw.strip()
+    if not raw:
+        return "", ""
+    # If the whole thing is short, treat as pure title
+    words = raw.split()
+    if len(words) <= 8:
+        return raw, ""
+    # (a) Sentence boundary "..period.. Capitalword"
+    m = re.search(r"([\.!?])\s+([A-Z])", raw)
+    if m and raw[:m.start()+1].count(" ") <= cap_words:
+        title = raw[: m.end() - 1].rstrip()
+        body = raw[m.end() - 1:].lstrip()
+        if title and body:
+            return title.rstrip(".!?"), body
+    # (b) Body-starter word at position >= 3
+    for i in range(3, min(len(words), cap_words + 4)):
+        if _looks_like_body_start(words[i]):
+            title = " ".join(words[:i])
+            body = " ".join(words[i:])
+            return title, body
+    # (c) fallback
+    return " ".join(words[:cap_words]), " ".join(words[cap_words:])
+
+def _split_inline_subsubs(body: str) -> list[dict]:
+    """Scan a body for inline sub-subsection headings like `C3a. …` or
+    `D2b. …`. If found, split the body into a sequence of sub-sub cards.
+    Returns a list of {id, title, body} dicts, or an empty list if no splits."""
+    marker_re = re.compile(r"(?:^|\n)\s*([A-Z]\d+[a-z])\.\s+", re.MULTILINE)
+    matches = list(marker_re.finditer(body))
+    if not matches:
+        return []
+    out = []
+    # Content before first marker → "Intro" sub
+    pre = body[: matches[0].start()].strip()
+    if len(pre) > 60:
+        out.append({"id": None, "title": "Overview", "body": pre})
+    for i, m in enumerate(matches):
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
+        raw = body[start:end].strip()
+        title, rest = _split_title_and_body(raw)
+        out.append({"id": m.group(1), "title": title, "body": rest})
+    return out
+
+_CONTINUATION_WORDS = {
+    "and", "or", "of", "to", "for", "with", "the", "a", "an", "in", "at",
+    "on", "by", "as", "from", "into", "onto", "via",
+}
+
+def _maybe_extend_title(title: str, body: str) -> tuple[str, str]:
+    """The PDF extractor often breaks a heading mid-phrase ("Discovery of
+    ubiquitin and\nthe conjugation cascade…" or "Kinase scaffolding —\nthe
+    original DCAF7 function"). If the title ends with a continuation word
+    or a trailing em-dash / hyphen, pull the next phrase out of the body
+    up to the first body-starter word or ~10 words in."""
+    raw = title.rstrip()
+    if not raw:
+        return title, body
+    t_words = raw.split()
+    tail = t_words[-1].lower().rstrip(",.:;")
+    ends_dash = raw.endswith(("—", "–", "-"))
+    if not ends_dash and tail not in _CONTINUATION_WORDS:
+        return title, body
+    # How many words already in title — cap pulled chunk to keep title readable
+    remaining_budget = max(0, 12 - len(t_words))
+    if remaining_budget == 0:
+        return title, body
+    b_words = body.split()
+    consumed = 0
+    for i, w in enumerate(b_words):
+        if i > 0 and _looks_like_body_start(w):
+            break
+        consumed = i + 1
+        if i >= remaining_budget - 1:
+            break
+    if consumed == 0 or consumed >= len(b_words):
+        return title, body
+    pulled = " ".join(b_words[:consumed])
+    new_title = (raw + " " + pulled).strip()
+    new_body = " ".join(b_words[consumed:])
+    return new_title, new_body
+
+def _clean_subsection(sub: dict) -> dict:
+    """Normalize titles that got merged with body text by the PDF extractor."""
+    title = sub.get("title") or ""
+    body = sub.get("body") or ""
+    # Case 1 — title is too long and clearly ate into body
+    if len(title.split()) > 8 or ". " in title:
+        new_title, extra = _split_title_and_body(title)
+        if extra:
+            title = new_title
+            body = (extra + "\n\n" + body).strip() if body else extra
+    # Case 2 — title is too short / ends in a connector word
+    title, body = _maybe_extend_title(title, body)
+    sub["title"] = title
+    sub["body"] = body
+    return sub
 
 def split_subs(body):
     matches = list(SUBSUB_PAT.finditer(body))
@@ -84,7 +225,19 @@ def split_subs(body):
         })
     if not subs:
         subs = [{"id": None, "title": "Overview", "body": body.strip()}]
-    return subs
+
+    # Second pass — for each subsection, (a) split inline sub-subsections out
+    # into their own entries, and (b) clean up title/body merges.
+    expanded = []
+    for sub in subs:
+        inline = _split_inline_subsubs(sub["body"])
+        if inline:
+            # Use the inline splits instead of the single catch-all subsection
+            for piece in inline:
+                expanded.append(_clean_subsection(piece))
+        else:
+            expanded.append(_clean_subsection(sub))
+    return expanded
 
 def extract_facts(body):
     facts = []
@@ -256,8 +409,8 @@ for tid in ("tier1", "tier2", "tier3"):
         "qanda": qanda,
     })
 
-Path("content.json").write_text(json.dumps(out, indent=2))
-print("Wrote content.json")
+Path("data/content.json").write_text(json.dumps(out, indent=2))
+print("Wrote data/content.json")
 for t in out["tiers"]:
     n_sub = sum(len(s["subsections"]) for s in t["sections"])
     n_kf = sum(s["totalKeyFacts"] for s in t["sections"])

@@ -1,7 +1,7 @@
 /* main.js — entry: theme, router, tabs, swipes, boot. */
 import { getEl, querySelAll } from './utils.js';
 import { getSettings, setSetting } from './storage.js';
-import { registerScreen, registerTab, go } from './router.js';
+import { registerScreen, registerTab, go, back } from './router.js';
 import { loadContent } from './content.js';
 
 import { renderHome } from './screens/home.js';
@@ -68,6 +68,13 @@ function wireSwipes() {
   el.addEventListener('touchstart', (e) => {
     if (e.touches.length !== 1) return;
     const t = e.touches[0];
+    // Ignore touches that started on a horizontally-scrollable element
+    // (chips row, flashcard stage) — otherwise the swipe hijacks scroll.
+    let node = e.target;
+    while (node && node !== el) {
+      if (node.scrollWidth > node.clientWidth + 4) { tracking = false; return; }
+      node = node.parentElement;
+    }
     startX = t.clientX; startY = t.clientY; startT = Date.now(); tracking = true;
   }, { passive: true });
   el.addEventListener('touchend', (e) => {
@@ -82,11 +89,21 @@ function wireSwipes() {
     const active = document.querySelector('.screen.active');
     if (!active) return;
     const id = active.dataset.screen;
-    const ix = TAB_ORDER.indexOf(id);
-    if (ix < 0) return;
-    const nextIx = dx < 0 ? ix + 1 : ix - 1;
-    if (nextIx < 0 || nextIx >= TAB_ORDER.length) return;
-    go(TAB_ORDER[nextIx]);
+
+    // On top-level tabs: swipe between tabs. On detail screens: swipe-right = back.
+    const tabIx = TAB_ORDER.indexOf(id);
+    if (tabIx >= 0) {
+      const nextIx = dx < 0 ? tabIx + 1 : tabIx - 1;
+      if (nextIx < 0 || nextIx >= TAB_ORDER.length) return;
+      go(TAB_ORDER[nextIx]);
+    } else if (dx > 0) {
+      // Swipe right on a detail screen = go back. Only trigger if the swipe
+      // started in the left 25% of the screen (iOS-style edge-swipe) so we
+      // don't fight horizontal interactions inside the screen.
+      if (startX < window.innerWidth * 0.25) {
+        back();
+      }
+    }
   }, { passive: true });
 }
 
