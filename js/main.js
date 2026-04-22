@@ -12,6 +12,8 @@ import { renderCards } from './screens/cards.js';
 import { renderDeck } from './screens/deck.js';
 import { renderQanda } from './screens/qanda.js';
 import { renderQList } from './screens/qlist.js';
+import { renderQuizMenu } from './screens/quiz-menu.js';
+import { renderQuiz } from './screens/quiz.js';
 import { renderSettings } from './screens/settings.js';
 
 function applyTheme(theme) {
@@ -46,6 +48,8 @@ function registerAllScreens() {
   registerScreen('section',  { el: getEl('screen-section'),  render: () => {} });
   registerScreen('deck',     { el: getEl('screen-deck'),     render: () => {} });
   registerScreen('qlist',    { el: getEl('screen-qlist'),    render: () => {} });
+  registerScreen('quizmenu', { el: getEl('screen-quizmenu'), render: () => {} });
+  registerScreen('quiz',     { el: getEl('screen-quiz'),     render: () => {} });
   registerScreen('settings', { el: getEl('screen-settings'), render: () => renderSettings(getEl('screen-settings')) });
 }
 

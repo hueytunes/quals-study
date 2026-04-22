@@ -4,17 +4,24 @@
 
 let _cache = null;
 let _promise = null;
+let _quizCache = { quizzes: [] };
 
 export function loadContent() {
   if (_cache) return Promise.resolve(_cache);
   if (_promise) return _promise;
-  _promise = fetch('data/content.json')
-    .then(r => r.json())
-    .then(data => { _cache = data; return data; });
+  _promise = Promise.all([
+    fetch('data/content.json').then(r => r.json()),
+    fetch('data/quizzes.json').then(r => r.ok ? r.json() : { quizzes: [] }).catch(() => ({ quizzes: [] })),
+  ]).then(([content, quizzes]) => {
+    _cache = content;
+    _quizCache = quizzes || { quizzes: [] };
+    return content;
+  });
   return _promise;
 }
 
 export function getContent() { return _cache; }
+export function getAllQuizzes() { return (_quizCache && _quizCache.quizzes) || []; }
 
 /* Helpers for navigation / selection */
 export function getTier(id) {
@@ -64,6 +71,26 @@ export function buildQAList({ tierId = null, section = null } = {}) {
       if (section && q.section !== section) continue;
       out.push({ ...q, tierId: t.id, tierTitle: t.title });
     }
+  }
+  return out;
+}
+
+/* Build a filtered/shuffled quiz set.
+   filter: { tierId?, sectionId?, type? 'mcq'|'cloze' }
+   mode:   'all' | 'unseen' | 'wrong'   — applied against progress.quiz */
+export function buildQuizSet({ tierId = null, sectionId = null, type = null, mode = 'all', progress = null } = {}) {
+  const q = getAllQuizzes();
+  const out = [];
+  for (const item of q) {
+    if (tierId && item.source?.tierId !== tierId) continue;
+    if (sectionId && item.source?.sectionId !== sectionId) continue;
+    if (type && item.type !== type) continue;
+    if (mode !== 'all' && progress && progress.quiz) {
+      const rec = progress.quiz[item.id];
+      if (mode === 'unseen' && rec) continue;
+      if (mode === 'wrong' && (!rec || rec.last !== 'wrong')) continue;
+    }
+    out.push(item);
   }
   return out;
 }

@@ -43,6 +43,7 @@ export function getProgress() {
     sectionsViewed: {},
     cards: {},
     qSeen: {},
+    quiz: {},              // { [itemId]: { attempts, correct, last, ts } }
     lastLocation: null,
     ...safeRead(KEY_PROGRESS, {}),
   };
@@ -79,6 +80,25 @@ export function markQSeen(qId) {
 }
 export function setLastLocation(loc) {
   setProgress(p => { p.lastLocation = loc; return p; });
+}
+
+/* Quiz attempt tracking: which items have been answered, whether correct,
+   how many tries. Used by the quiz menu (weakness-first re-study) and by
+   the Home / Settings stats. */
+export function markQuizAttempt(itemId, wasCorrect, pickedIndex) {
+  setProgress(p => {
+    if (!p.quiz) p.quiz = {};
+    const cur = p.quiz[itemId] || { attempts: 0, correct: 0 };
+    p.quiz[itemId] = {
+      attempts: (cur.attempts || 0) + 1,
+      correct: (cur.correct || 0) + (wasCorrect ? 1 : 0),
+      last: wasCorrect ? 'right' : 'wrong',
+      lastPick: pickedIndex,
+      ts: new Date().toISOString(),
+    };
+    return p;
+  });
+  bumpStreak();
 }
 
 /* Streak: days in a row the user has done anything. Bumps when any activity
